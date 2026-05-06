@@ -1,0 +1,36 @@
+[project]
+name = "bareun-pipeline"
+version = "0.1.0"
+description = "bareun 한국어 형태소 분석기 비동기 파이프라인 — 명사 추출 및 사전 관리"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["korean", "nlp", "morpheme", "bareun", "noun-extraction", "한국어", "형태소"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Natural Language :: Korean",
+    "Topic :: Text Processing :: Linguistic",
+    "Framework :: AsyncIO",
+]
+dependencies = [
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+fast = ["orjson>=3.9"]        # JSON 파싱 속도 향상
+progress = ["tqdm>=4.65"]     # 진행 표시줄
+
+[project.urls]
+Homepage   = "https://github.com/rubato103/bareun-pipeline"
+Repository = "https://github.com/rubato103/bareun-pipeline"
+
+[build-system]
+requires      = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["bareun_pipeline"]
