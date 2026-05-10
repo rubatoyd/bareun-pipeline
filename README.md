@@ -180,22 +180,9 @@ df["nouns"] = [r.nouns for r in results]
 df.to_csv("results.csv", index=False, encoding="utf-8-sig")
 ```
 
-## bareun 서버 설치 (WSL2)
+## bareun 서버 설치
 
-공식 문서: https://bareun.ai/docs
-
-```bash
-# WSL2 내에서 설치
-curl -fsSL https://bareun.ai/install.sh | bash
-bareun start
-```
-
-서버 동작 확인:
-
-```powershell
-# Windows PowerShell
-curl http://localhost:5656/start/
-```
+서버 설치 및 운영 방법은 [https://bareun.ai/](https://bareun.ai/)를 참조하세요.
 
 ## GPU 가속 사용 시 주의사항
 
