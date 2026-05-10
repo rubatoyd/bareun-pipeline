@@ -1,0 +1,18 @@
+# bareun-gpu: GPU 가속 bareun 형태소 분석 서버 컨테이너
+#
+# 빌드 결과 이미지: bareun-trt:latest
+# 베이스 이미지(bareunai/bareun-gpu:latest)에는 onnxruntime 1.23.0이 포함되며
+# CUDA 12 / cuDNN 9 / TensorRT 10 라이브러리를 필요로 한다.
+# 베이스 이미지의 시스템 CUDA가 부족할 수 있으므로 부족분은 호스트 -v /trt_libs 마운트로 주입한다.
+#
+# 사용:
+#   docker build -f Dockerfile.bareun-gpu -t bareun-trt:latest .
+FROM bareunai/bareun-gpu:latest
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# bareun 내부 라이브러리 경로 + 호스트 마운트 TRT 라이브러리 경로 + WSL2 GPU 드라이버 경로
+ENV LD_LIBRARY_PATH=/bareun/lib:/trt_libs:/usr/lib/wsl/lib
+
+ENTRYPOINT ["/entrypoint.sh"]

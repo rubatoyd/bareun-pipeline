@@ -16,11 +16,23 @@ except ImportError:
     import json
     def _loads(b: bytes): return json.loads(b)  # type: ignore[misc]
 
-from .extractor import extract_nouns
+from .extractor import extract_nouns, post_combine_pairs as _post_combine
 
 
-def _parse_response(raw_bytes: bytes, batch_len: int) -> tuple[list[str], list[str]]:
-    """JSON 응답 바이트 → (noun_strings, morpheme_strings). 스레드풀에서 실행."""
+def _parse_response(
+    raw_bytes: bytes,
+    batch_len: int,
+    combine_consecutive_nominals: bool = True,
+    post_combine_pairs: frozenset | set | None = None,
+) -> tuple[list[str], list[str]]:
+    """JSON 응답 바이트 → (noun_strings, morpheme_strings). 스레드풀에서 실행.
+
+    Args:
+        raw_bytes: bareun API 원시 응답 바이트
+        batch_len: 요청한 배치 크기 (응답 누락 보정용)
+        combine_consecutive_nominals: 연속 NNG/NNP 자동 결합 여부 (기본 True)
+        post_combine_pairs: 인접 명사 쌍 사후 결합 대상 cp_set (None=비활성)
+    """
     data       = _loads(raw_bytes)
     nouns_out: list[str]  = []
     morphs_out: list[str] = []
@@ -43,8 +55,14 @@ def _parse_response(raw_bytes: bytes, batch_len: int) -> tuple[list[str], list[s
             if morph_parts:
                 token_strs.append("+".join(morph_parts))
             if tok_forms:
-                nouns.extend(extract_nouns(tok_forms))
+                nouns.extend(extract_nouns(
+                    tok_forms,
+                    combine_consecutive_nominals=combine_consecutive_nominals,
+                ))
 
+        # 사후 결합 (cp_set) 적용 — 결합 후 중복 제거
+        if post_combine_pairs:
+            nouns = _post_combine(nouns, post_combine_pairs)
         nouns_out.append(", ".join(dict.fromkeys(nouns)))
         morphs_out.append("|".join(token_strs))
 
@@ -86,6 +104,8 @@ class BareunClient:
         texts: list[str],
         custom_dict_names: list[str] | None = None,
         progress_cb: Callable[[int, int], None] | None = None,
+        combine_consecutive_nominals: bool = True,
+        post_combine_pairs: frozenset | set | None = None,
     ) -> tuple[list[str], list[str], int]:
         """
         비동기 배치 형태소 분석.
@@ -94,6 +114,8 @@ class BareunClient:
             texts:             분석할 텍스트 리스트
             custom_dict_names: 적용할 사용자 사전 도메인 이름 목록
             progress_cb:       진행 콜백 fn(done, total)
+            combine_consecutive_nominals: 연속 NNG/NNP 자동 결합 여부 (기본 True)
+            post_combine_pairs: 인접 명사 쌍 사후 결합 대상 복합명사 집합 (None=비활성)
 
         Returns:
             (noun_strings, morpheme_strings, error_count)
@@ -151,7 +173,12 @@ class BareunClient:
 
                     if raw is not None:
                         n_strs, m_strs = await loop.run_in_executor(
-                            executor, _parse_response, raw, len(batch)
+                            executor,
+                            _parse_response,
+                            raw,
+                            len(batch),
+                            combine_consecutive_nominals,
+                            post_combine_pairs,
                         )
                         for idx, (ns, ms) in enumerate(zip(n_strs, m_strs)):
                             noun_strs[start + idx]  = ns

@@ -119,19 +119,34 @@ dm.test(domain="my-domain", text="청소년참여위원회에서 학교폭력예
 results = pipeline.run(texts, custom_dict_names=["my-domain"])
 ```
 
+### 7. 토픽 모델용 옵션 (연속 결합 OFF + cp_set 사후 결합)
+
+토픽 모델링 등 어휘 변별력이 중요한 용례에서는 연속 NNG/NNP 자동 결합을 끄고, 의미 보존이 필요한 복합명사는 도메인 사전(cp_set)에 명시 등록하는 정책을 권장합니다. bareun 서버의 cp_set은 입력 텍스트의 띄어쓰기 양상에 따라 부분적으로만 적용되므로, 클라이언트 측 사후 결합 옵션을 함께 사용하면 일관된 결합을 보장할 수 있습니다.
+
+```python
+CP = {"다문화교육", "다문화사회", "한국사회", "사회통합"}
+
+results = pipeline.run(
+    texts,
+    custom_dict_names=["multicultural-edu"],
+    combine_consecutive_nominals=False,   # 연속 NNG/NNP 자동 결합 OFF
+    post_combine_pairs=CP,                 # 인접 명사 쌍이 cp에 있으면 결합
+)
+```
+
 ## 명사 추출 규칙
 
 bareun 형태소 태그 기준 결합 우선순위:
 
-| 패턴 | 예시 | 결과 |
-|------|------|------|
-| XPN + NNG/NNP + XSN | 비+자살+적 | 비자살적 |
-| XPN + NNG/NNP | 비+자살 | 비자살 |
-| NNG/NNP + XSN | 사회+적 | 사회적 |
-| 연속 NNG/NNP | 사회+공헌 | **사회공헌** |
-| NNB/SL 단독 | 수, CNN | 수, CNN |
+| 패턴 | 예시 | 결과 | 비고 |
+|------|------|------|------|
+| XPN + NNG/NNP + XSN | 비+자살+적 | 비자살적 | 항상 적용 |
+| XPN + NNG/NNP | 비+자살 | 비자살 | 항상 적용 |
+| NNG/NNP + XSN | 사회+적 | 사회적 | 항상 적용 |
+| 연속 NNG/NNP | 사회+공헌 | **사회공헌** | `combine_consecutive_nominals=True` (기본) |
+| NNB/SL 단독 | 수, CNN | 수, CNN | 항상 적용 |
 
-> 연속 NNG/NNP 자동 결합은 bareun 전용 동작입니다.
+> 연속 NNG/NNP 자동 결합은 `combine_consecutive_nominals` 파라미터로 제어합니다. 토픽 모델 입력 등 어휘 변별력이 중요한 용례에서는 `False`를 권장하며, 의미 보존이 필요한 복합명사는 `post_combine_pairs`(클라이언트 후처리) 또는 bareun 서버의 cp_set(사용자 사전)에 명시 등록합니다.
 
 ## BatchResult API
 
@@ -181,6 +196,26 @@ bareun start
 # Windows PowerShell
 curl http://localhost:5656/start/
 ```
+
+## GPU 가속 사용 시 주의사항
+
+bareun 서버는 ONNX Runtime 1.23.0을 사용하며 다양한 Execution Provider(CUDA, TensorRT, DirectML 등)를 지원합니다. 본 패키지는 클라이언트일 뿐이지만, 서버 측 EP 선택은 분석 출력에 직결되므로 다음 사항을 유의해 주세요.
+
+| GPU 환경 | 권장 EP | 비고 |
+|---|---|---|
+| Pascal/Volta/Turing/Ampere/Ada (sm_61~89) | `cuda` 또는 `tensorrt` | 일반적으로 안정 |
+| **Blackwell (sm_100, sm_120)** | **`tensorrt` 권장** | `cuda` EP에서 비실재 한국어 음절이 명사 추출 결과에 섞이는 사례 확인 |
+
+EP 변경 후에는 5~50문서 단위로 출력 검증을 권장합니다. 자모(ㄴ/ㅁ/ㅂ 등) 자체는 정상적인 형태소 출력(어미 ETM 등)일 수 있으나, **단어 중간에 자모가 박힌 형태(예: "대비하ㄴ", "에미", "있조저")가 명사 추출 결과에 보인다면 EP 호환성 문제**일 가능성이 높습니다.
+
+```python
+from bareun_pipeline import BareunPipeline
+pipeline = BareunPipeline.from_env()
+sample = ["우리 민족에게 통일은 더 이상의 희망 사항이 아니라 목적에 닥친 구체적인 현실이다."]
+print(pipeline.run(sample)[0].nouns)  # 비실재 음절 포함 여부 확인
+```
+
+Docker 기반 GPU 셋업 예제는 `examples/docker_gpu/` 참고.
 
 ## 라이선스
 

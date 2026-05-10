@@ -129,6 +129,8 @@ class BareunPipeline:
         self,
         texts: list[str],
         custom_dict_names: list[str] | None = None,
+        combine_consecutive_nominals: bool = True,
+        post_combine_pairs: frozenset | set | None = None,
     ) -> BatchResult:
         """
         동기 배치 분석.
@@ -136,26 +138,46 @@ class BareunPipeline:
         Args:
             texts:             분석할 텍스트 리스트
             custom_dict_names: 적용할 사용자 사전 도메인 이름 목록
+            combine_consecutive_nominals: 연속 NNG/NNP 자동 결합 여부 (기본 True).
+                토픽 모델 입력 등 어휘 변별력이 중요한 용례에서는 False 권장.
+            post_combine_pairs: 인접 명사 쌍 사후 결합 대상 복합명사 집합 (None=비활성).
+                bareun 서버 cp_set의 적용 한계를 보완해 의미 단위 보존을 보장한다.
 
         Returns:
             BatchResult (list[AnalysisResult] + error_count)
         """
-        return asyncio.run(self.run_async(texts, custom_dict_names))
+        return asyncio.run(self.run_async(
+            texts,
+            custom_dict_names,
+            combine_consecutive_nominals=combine_consecutive_nominals,
+            post_combine_pairs=post_combine_pairs,
+        ))
 
     async def run_async(
         self,
         texts: list[str],
         custom_dict_names: list[str] | None = None,
+        combine_consecutive_nominals: bool = True,
+        post_combine_pairs: frozenset | set | None = None,
     ) -> BatchResult:
         """
         비동기 배치 분석. asyncio 이벤트 루프 안에서 직접 await 가능.
+
+        Args:
+            texts:             분석할 텍스트 리스트
+            custom_dict_names: 적용할 사용자 사전 도메인 이름 목록
+            combine_consecutive_nominals: 연속 NNG/NNP 자동 결합 여부 (기본 True).
+            post_combine_pairs: 인접 명사 쌍 사후 결합 대상 복합명사 집합 (None=비활성).
 
         Example::
 
             results = await pipeline.run_async(texts)
         """
         noun_strs, morph_strs, errors = await self._client.analyze_async(
-            texts, custom_dict_names
+            texts,
+            custom_dict_names,
+            combine_consecutive_nominals=combine_consecutive_nominals,
+            post_combine_pairs=post_combine_pairs,
         )
         return BatchResult(
             results=[

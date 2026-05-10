@@ -1,0 +1,22 @@
+{
+  "version": 3000000,
+  "address": {"ipAddr": "0.0.0.0", "port": 5656},
+  "libPath": "${BAREUN_ROOT}/lib",
+  "libDevel": false,
+  "tracePath": "${BAREUN_ROOT}/var/trace",
+  "modelPath": "${BAREUN_ROOT}/models",
+  "customDictPath": "${BAREUN_ROOT}/var/custom-dict",
+  "licenseFile": "${BAREUN_ROOT}/var/license.pem",
+  "logPath": "${BAREUN_ROOT}/var/logs",
+  "varPath": "${BAREUN_ROOT}/var",
+  "staticAddress": {"ipAddr": "0.0.0.0", "port": 5656},
+  "manualPath": "${BAREUN_ROOT}/docs",
+  "webPath": "${BAREUN_ROOT}/webroot",
+  "hasTestWeb": true,
+  "confusingService": {"ipAddr": "0.0.0.0", "port": 5659},
+  "confusingServiceRemote": "localhost:5659",
+  "confusingServiceUseTls": false,
+  "executionProvider": {
+    "provider": "cpu"
+  }
+}
