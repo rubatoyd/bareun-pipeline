@@ -60,9 +60,13 @@ docker run -d --name bareun \
     -p 5656:5656 \
     -v "$(pwd)/bareun-tensorrt.json:/bareun/config/bareun.json:ro" \
     -v "$HOME/trt_libs_for_bareun:/trt_libs:ro" \
-    --restart unless-stopped \
+    -e BAREUN_MODEL_MANIFEST_URL="https://storage.googleapis.com/bareun-deploy/serve/default/T260803-68E78F/manifest.json" \n    --restart unless-stopped \
     bareun-trt:latest
 ```
+
+> **`BAREUN_MODEL_MANIFEST_URL` 은 TensorRT EP 사용 시 필수입니다.** 기본 모델(T260817 이후)은
+> TensorRT 10.16.1 에서 임포트되지 않습니다. 아래 **7. 모델 호환성** 을 참조하세요.
+> CPU EP 로만 쓸 경우 생략해도 됩니다.
 
 PowerShell 등 Windows 호스트에서 실행하는 경우 `$HOME` 대신 `\\wsl$\Ubuntu\home\<user>\trt_libs_for_bareun` 경로를 사용하거나, WSL bash로 위 명령을 실행하세요.
 
@@ -116,6 +120,73 @@ bash setup_trt_libs.sh
 
 서버 시작 직후 잠깐 표시될 수 있으나, API 키만 등록되면 정상 동작합니다. 첫 실행 시 브라우저로 `http://localhost:5656/` 접속 → 발급받은 API 키 등록.
 
+### `Assertion failed: ... kINT32` / `Non-zero zero point is not supported`
+
+모델 호환성 문제입니다. **7. 모델 호환성** 을 참조해 `BAREUN_MODEL_MANIFEST_URL` 로
+`T260803-68E78F` 를 고정하세요.
+
+### CUDA EP 로 바꿨더니 결과가 깨짐 (Blackwell)
+
+sm_120 에서 `cuda` EP 는 사용할 수 없습니다. 실측(300 발화)에서 **100% 불일치**했고
+`삽읩`, `아닣라`, `합잇` 같은 비실재 음절이 출력됐습니다. 속도는 3.09배 빨라지지만
+결과가 무의미합니다. TensorRT 가 막히면 CUDA 가 아니라 **CPU 로 폴백**하십시오.
+
+### 첫 요청이 2분 넘게 걸림
+
+TensorRT 엔진 빌드입니다(실측 125초). 입력 shape 별로 빌드되며 `trt_engine_cache_enable`
+로 캐시됩니다. `/bareun/var` 를 named volume 으로 마운트하지 않으면 컨테이너를 새로 만들
+때마다 재빌드합니다.
+
+### Docker Desktop(Windows): 컨테이너가 `Created` 에서 멈춤
+
+마운트 소스 파일이 없으면 Docker 가 **디렉토리로 자동 생성**합니다. 이후
+`not a directory: Are you trying to mount a directory onto a file` 오류가 납니다.
+해당 경로를 지우고 파일을 만든 뒤 다시 실행하세요.
+
 ### 컨테이너 내부 `/trt_libs` 가 비어 보임
 
 PowerShell 등 Windows 호스트에서 docker 실행 시 WSL 경로(`/home/...`)는 `docker-desktop` 배포 기준으로 해석되어 비게 보입니다. WSL bash 내부에서 `docker run` 명령을 직접 실행하거나, `\\wsl$\Ubuntu\home\<user>\trt_libs_for_bareun` UNC 경로를 사용하세요.
+
+## 7. 모델 호환성 — TensorRT EP 사용 시 반드시 확인
+
+bareun 서버는 기동 시 모델 카탈로그에서 최신 모델을 내려받습니다.
+**2026-08-17 발행 `T260817-F05693` 부터 WSD 가 독립 모델(`sense-model.onnx`, KoELECTRA)로
+분리되었고, 이 모델은 비대칭 양자화를 써서 TensorRT 10.16.1 의 ONNX 파서가 임포트하지
+못합니다.**
+
+```
+[6] Assertion failed: shiftIsAllZeros(zeroPoint): Non-zero zero point is not supported.
+[8] Assertion failed: (output_tensor_ptr->getType() != nvinfer1::DataType::kINT32 || ...)
+```
+
+`seg-model.onnx` 와 `tag-model.onnx` 는 정상 로드되고 **`sense-model.onnx` 에서만 실패**하므로,
+로그에 `TensorRT execution provider enabled` 가 보여도 서버는 요청마다 죽습니다
+(클라이언트에는 `End of TCP stream` 으로 나타납니다).
+
+### 검증된 조합 (2026-09-16, RTX 5060 Ti / sm_120 / TRT 10.16.1 / 서버 v3.1.0)
+
+| 모델 | 구성 | TensorRT | 비고 |
+|---|---|---|---|
+| `T260803-68E78F` | `tag-sense-model.onnx` (병합) | 정상 | **권장** |
+| `T260806-AFD6C8` | 미검증 | ? | |
+| `T260815-BDEB57` | 미검증 | ? | |
+| `T260817-F05693` | `sense-model.onnx` (독립·양자화) | 실패 | 서버 기본값 |
+| `T260914-535CAD` | — | — | 서버 3.2.0 이상 필요 |
+
+병합형 모델은 별도 WSD 모델이 없어 **동음이의어 판별 품질이 낮습니다.**
+형태소·품사만 필요하면 문제가 없지만, WSD 가 필요하면 CPU EP 를 쓰십시오.
+
+### 성능·정확도 실측 (300 발화, 한국어 커뮤니티 텍스트)
+
+| 항목 | 값 |
+|---|---|
+| 첫 실행 (엔진 빌드) | 125.1s |
+| **캐시 후** | **0.41s** (CPU 1.60s 대비 **3.86배**) |
+| VRAM | 약 2.6GB |
+| CPU EP 와의 형태소 열 불일치 | 4 / 301 (1.33%) |
+
+불일치는 전부 경계 판단 차이(`기대하 아` / `기대 하 아`, `참교사` / `참 교사`)였고
+비실재 음절은 관찰되지 않았습니다.
+
+엔진 캐시는 `trtEngineCachePath`(기본 `${BAREUN_ROOT}/var/trt_cache`)에 쌓이므로
+**`/bareun/var` 를 named volume 으로 마운트**해야 재기동 시 재빌드를 피할 수 있습니다.
